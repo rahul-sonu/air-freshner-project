@@ -1,0 +1,2312 @@
+
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  ** This notice applies to any and all portions of this file
+  * that are not between comment pairs USER CODE BEGIN and
+  * USER CODE END. Other portions of this file, whether 
+  * inserted by the user or by software development tools
+  * are owned by their respective copyright owners.
+  *
+  * COPYRIGHT(c) 2020 STMicroelectronics
+  *
+  * Redistribution and use in source and binary forms, with or without modification,
+  * are permitted provided that the following conditions are met:
+  *   1. Redistributions of source code must retain the above copyright notice,
+  *      this list of conditions and the following disclaimer.
+  *   2. Redistributions in binary form must reproduce the above copyright notice,
+  *      this list of conditions and the following disclaimer in the documentation
+  *      and/or other materials provided with the distribution.
+  *   3. Neither the name of STMicroelectronics nor the names of its contributors
+  *      may be used to endorse or promote products derived from this software
+  *      without specific prior written permission.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  *
+  ******************************************************************************
+  */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "stm32f1xx_hal.h"
+#include "adc.h"
+#include "dma.h"
+#include "i2c.h"
+#include "rtc.h"
+#include "tim.h"
+#include "gpio.h"
+
+/* USER CODE BEGIN Includes */
+
+#define SSD1306_USE_I2C 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "ssd1306.c"
+#include "ssd1306_tests.c"
+#include "ssd1306_fonts.c"
+#include "eeprom.c"
+#include "eepromConfig.h"
+
+/* USER CODE END Includes */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+/* Private variables ---------------------------------------------------------*/
+
+RTC_TimeTypeDef gTime;
+RTC_TimeTypeDef gDate;
+
+//#define  _EEPROM_F1_LOW_DESTINY  == 1
+#define   _EEPROM_F1_LOW_DESTINY		(0)
+#define	 _EEPROM_FLASH_PAGE_SIZE		1024
+
+#define UP_KEY   HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_10)  
+#define D_KEY    HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_14)  
+
+#define L_KEY    HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_13)  
+#define R_KEY    HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_12)  
+
+#define MENU_KEY HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_15)  
+
+#define Sprinkle_ON_Time_Hr 8
+#define Sprinkle_ON_Time_Min 8
+#define blink_time 10
+#define battery_avg_times 100
+
+extern _Bool up_flag , down_flag , left_flag , right_flag , menu_flag ;
+
+_Bool	display_off_flag = 0,display_on_flag = 0,one_time_init_flag = 0,bat_avg_complete_flag = 0,date_set_flag = 0,time_set_flag = 0,ind_week_write_flag = 0,week_write_flag = 0,ind_week_flag = 0,reset_flag = 0,
+reset_loop_flag = 0,save_data_eeprom_flag = 0,read_success_flag = 0,write_success_flag = 0,spray_motor_on_flag = 0,event1_menu_flag = 0,setting_menu_flag = 0,
+l1_flag = 0,l2_flag = 0,l3_flag = 0,event1_on_timing_control_flag = 0,event1_off_timing_control_flag = 0,weekdays_sel_flag = 0,individual_weekday_flag = 0,
+week_sel_complete_flag = 0,event1_timer_on_flag = 0,event1_spr_time_on_flag = 0, event1_spr_time_off_flag = 0,event1_gui_on_flag = 0,event1_gui_off_flag = 0,
+event_one_flag = 0,event1_loop_flag = 0,sel_all_day_flag = 0,gui_blink_flag = 0,gui_blink_on_flag = 0,gui_blink_off_flag = 0,sprinkle_daily_on_flag = 0,
+oled_off_flag = 0,spr_on_flag = 0,spr_exit_flag = 0,menu_on_flag = 0,time_gui_flag = 0,date_gui_flag = 0,
+sprinkle_gui_flag = 0,gui_update_flag = 0,left_spr_flag = 0,right_spr_flag = 0,up_spr_flag = 0,down_spr_flag = 0,lf_flag = 0, rf_flag = 0,
+monday_flag = 0,tuesday_flag = 0,	wednesday_flag = 0,thursday_flag = 0,	friday_flag = 0,saturday_flag = 0,sunday_flag = 0,	monday1_flag = 0,tuesday1_flag = 0,
+wednesday1_flag = 0,thursday1_flag = 0,friday1_flag = 0,saturday1_flag = 0,sunday1_flag = 0;
+ 
+char evt1_daily_on_time[10];
+char evt1_daily_off_time[10];
+char Evt1_Spr_On_Time[10];
+char Evt1_Spr_Off_Time[10];
+
+char time[10];
+extern char date[10];
+char buff[15];
+extern char mnth[4];
+char S_ON[12];
+char S_OFF[14];
+char * WEEKS[] = {"MON","TUE","WED","THU","FRI","SAT","SUN"};
+char  store_weekdays[8];
+char* arr_weekcomb;
+char* read_eeprom;
+
+char store_eeprom_weekdays[8];
+
+uint16_t ADCReadings[2]; 
+uint32_t read_buffer[10];
+uint32_t date_array[3];
+uint32_t evt1_on_time[2];
+uint32_t evt1_off_time[2];
+uint32_t read_spr_on_time[1];
+uint32_t read_spr_off_time[1];
+uint32_t read_eeprom_weekdays[1];
+uint32_t read_eeprom_ind_weekdays[1];
+uint32_t arr_comb[1];
+uint32_t arr_week_comb[1];
+uint32_t read_data[2]; 
+uint32_t rtc_cal_time = 0;
+uint32_t user_cal_on_time = 0;
+uint32_t user_cal_off_time = 0;
+uint32_t back_up_value = 0, bat_avg_val = 0;
+
+float bat_val_0 = 0.0;
+float battery_actual_val_0 = 0.0;
+uint16_t battery_val_0 = 0;
+ 
+uint8_t t_on,t_off;
+uint8_t hrs,mins,secs,week_days,days,mnths,yrs;
+uint8_t bat_count = 0,spr_sec = 0,time_keep = 0,weekday_sec = 0,space = 0,x = 0,weekday,weekday_sel = 0;
+uint8_t bat_rev_count = 10,spr_count = 0;
+int8_t w_day = 0,evt1_Hr_on = 0,evt1_Min_on = 0, evt1_Hr_off = 0,evt1_Min_off = 0,evt1_spr_on_time = 0;
+int16_t ev1_spr_off_time = 0,bat_val_count = 0;
+int8_t gTime_Hr = 0,gTime_Min = 0,gTime_Sec = 0;
+int8_t  gDate_Date = 0,gDate_Month = 0,gDate_Year = 0;
+uint16_t T_ON = 0,T_OFF = 0,T = 0,d = 0,T_Min_On = 0,T_Sec_On = 0,T_Min_Off = 0,T_Sec_Off = 0;
+int16_t Ton_Min = 0,Ton_Sec = 0,Toff_Min = 0,Toff_Sec = 0;
+uint16_t T1_Second = 0,t200 = 0,t400 = 0,second = 0,rate = 0,sec_count = 0,get_rtc_hour = 0,get_rtc_min = 0;
+int16_t rev_sec  = 100,day_counter = 0,event1_counter = 0;
+int xx = 43,yy = 15,X = 16 , Y = 21,X1 = 20, Y1 = 22,X2 = 20, Y2 = 22,X3 = 35,Y3 = 38,X4 = 35,Y4 = 38,X5 = 55, Y5 = 18,X6 = 65;
+uint16_t ht = 0;
+uint16_t y = 0,bat_percent = 0;
+uint16_t display_on_count = 0;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_NVIC_Init(void);
+
+/* USER CODE BEGIN PFP */
+/* Private function prototypes -----------------------------------------------*/
+void get_time_date(void);
+void Event1_Profile_Setting(void);
+void set_profile_timing(uint8_t t_on, uint8_t t_off);
+void USER_RTC_Time_Init(uint8_t hrs,uint8_t mins, uint8_t secs);
+void USER_RTC_Date_Init(uint8_t Date,uint8_t Month,uint8_t Year);
+void GUI_Navigator(_Bool gui_update_flag);
+void GUI_Navigator_Time(void);
+void GUI_Navigator_Sprinkler(void);
+void GUI_Navr_Sprinkler_ON(void);
+void GUI_Navr_Sprinkler_OFF(void);
+void GUI_Navigator_Date(void);
+void GUI_Time_Data_Setting(void);
+void GUI_Date_Data_Setting(void);
+void GUI_Time_Data_Setting(void);
+void GUI_spr_On_Setting(void);
+void GUI_spr_Off_Setting(void);
+void Oled_GUI(void);
+void Oled_GUI_Graphics_Test(void);
+void get_month_rtc(void);
+void Set_Time_Date(void);
+void USER_RTC_Date_Time_Init(void);
+/* USER CODE END PFP */
+
+/* USER CODE BEGIN 0 */
+
+static unsigned int uint2bcd(unsigned int ival)
+{
+ 	return ((ival / 10) << 4) | (ival % 10);
+}
+float map(float in, float inMin, float inMax, float outMin, float outMax) 
+{
+  if (inMin<inMax) { 
+    if (in <= inMin) 
+      return outMin;
+    if (in >= inMax)
+      return outMax;
+  } else { 
+    if (in >= inMin) 
+      return outMin;
+    if (in <= inMax)
+      return outMax;
+  }
+  float scale = (in-inMin)/(inMax-inMin);
+  return outMin + scale*(outMax-outMin);
+} 
+void Oled_Battery_Filling_GUI(uint16_t fill_per)
+{	
+	ht = map((float)fill_per,0,100,1,18); 
+} 
+void Battery_Sense(void)
+{
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*) ADCReadings, 2);//start the DMA collecting the data
+	if(bat_val_count < battery_avg_times)
+	{
+		bat_avg_val += ADCReadings[0];
+		bat_val_count++;
+		bat_avg_complete_flag = 0;
+	}
+	else
+	{
+		bat_val_count = 0;
+		bat_avg_val = bat_avg_val / battery_avg_times;
+    bat_avg_complete_flag = 1;
+	}
+	if(bat_avg_complete_flag)
+	{
+		bat_val_0 = ((float)bat_avg_val * 3.3/*3.22--12v */)/4095;  
+	  battery_actual_val_0 = (float)((bat_val_0 * 23.4375) - 0.0093 * bat_avg_val); 
+		battery_val_0 = battery_actual_val_0 * 100; 
+		volatile float batt = battery_val_0;
+		batt =  (batt / 500 ) * 100;
+		bat_percent = (uint16_t)batt;
+	}
+}
+void check_rtc_working_condition(void)
+{
+	
+	
+}
+void Oled_Menu_GUI_Resume(void)
+{
+	get_time_date();
+	RTC_DateTypeDef gDate;
+  RTC_TimeTypeDef gTime;
+	ssd1306_Fill(Black); 
+	SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+	ssd1306_SetCursor(20,28);
+	sprintf((char*)time,"%02d:%02d:%02d",gTime_Hr,gTime_Min,gTime_Sec);
+	ssd1306_WriteString(time,Font_11x18, White); 
+	ssd1306_SetCursor(20,28);
+	sprintf((char*)date,"%02d:%02d:%02d",gDate_Date,gDate_Month,gDate_Year);
+	ssd1306_WriteString(date,Font_11x18, White); 
+	ssd1306_SetCursor(36,49);
+	snprintf(buff, sizeof(buff), "S:::%d sec", rev_sec);
+	ssd1306_WriteString(buff,Font_7x10, White);	 
+	ssd1306_UpdateScreen();
+}
+void Reset_Flag_Check(void)
+{
+	/* Enable Power Clock */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  /* Check and Clear the Wakeup flag */
+  if(__HAL_PWR_GET_FLAG(PWR_FLAG_WU) != RESET)
+  {
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+  }
+  /* Check if the system was resumed from StandBy mode */
+  if(__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET)
+	{
+    /* Clear StandBy flag */
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  }
+  /* Check if the Power On Reset flag is set */
+  if(__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) != RESET)
+  {
+		/* Turn on LED1: Power on reset occurred */
+ 
+  }
+	/* Check if Pin Reset flag is set */
+  if(__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != RESET)
+  {
+    /* Turn on LED1: External reset occurred */
+	}
+  /* Clear source Reset Flag */
+   __HAL_RCC_CLEAR_RESET_FLAGS();
+}
+void check_saved_data(void)
+{ 
+	if(read_eeprom_ind_weekdays[0] > 0 )  
+	{
+		 if(read_eeprom_ind_weekdays[0] == 11111111){
+			 	ind_week_flag = 1;
+				monday1_flag = 1;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+	   else if(read_eeprom_ind_weekdays[0] == 22222222){		
+			  ind_week_flag = 1;
+			  monday1_flag = 0;tuesday1_flag = 1;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 33333333){
+			 	ind_week_flag = 1;
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 1;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 44444444){
+			 	ind_week_flag = 1;
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 1;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 55555555){
+			  ind_week_flag = 1;
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 1; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 66666666){
+			 	ind_week_flag = 1;
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 1;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 77777777){
+			 	ind_week_flag = 1;
+        monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 1;}
+		 else
+			 	ind_week_flag = 0;
+	 }
+  if(read_eeprom_weekdays[0] > 0 && !ind_week_flag)  
+	{  
+			if(read_eeprom_weekdays[0] == 299593)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 1; saturday_flag = 1; sunday_flag = 1;
+			}
+			else if(read_eeprom_weekdays[0] == 266304)	
+			{
+				monday_flag = 1; tuesday_flag = 0; wednesday_flag = 1; thursday_flag = 0; friday_flag = 1; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 33288)	
+			{
+				monday_flag = 0; tuesday_flag = 1; wednesday_flag = 0; thursday_flag = 1; friday_flag = 0; saturday_flag = 1; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 299008)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 0; friday_flag = 0; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 37376)	
+			{
+				monday_flag = 0; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 0; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 299584)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 1; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 9)	
+			{
+				monday_flag = 0; tuesday_flag = 0; wednesday_flag = 0; thursday_flag = 0; friday_flag = 0; saturday_flag = 1; sunday_flag = 1;
+			}
+			else if(read_eeprom_weekdays[0] == 299592)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 1; saturday_flag = 1; sunday_flag = 0;
+			}
+  }
+	 __HAL_RCC_CLEAR_RESET_FLAGS();
+}
+void Check_Reset_Resume_Data(void)
+{
+	if((__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST)) || (__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST)) || (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST)))
+	{
+		 reset_flag = 1;
+	}
+	else
+	{
+		 reset_flag = 0;
+	}
+	if(reset_flag)
+	{
+		 reset_loop_flag = 1; 
+		 EE_Read(0x0000,&read_eeprom_ind_weekdays[0]);
+     HAL_Delay(5);		
+	   EE_Read(0x0001,&read_eeprom_weekdays[0]); 
+     HAL_Delay(5);			
+		 EE_Read(0x0002,&read_spr_on_time[0]); 
+		 HAL_Delay(5);		
+		 EE_Read(0x0003,&read_spr_off_time[0]); 
+		 HAL_Delay(5);		
+		 evt1_spr_on_time = read_spr_on_time[0];  
+		 HAL_Delay(5);		
+		 ev1_spr_off_time = read_spr_off_time[0];
+     HAL_Delay(5);				
+		 EE_Read(0x0004,&evt1_on_time[0]);  
+		 HAL_Delay(5);		
+		 EE_Read(0x0005,&evt1_off_time[0]);  
+		 HAL_Delay(5);		
+			
+		 evt1_Hr_on = evt1_on_time[0] / 3600;
+		 evt1_Min_on = (evt1_on_time[0] - (evt1_Hr_on * 3600))/60;
+		 evt1_Hr_off = evt1_off_time[0] / 3600;
+		 evt1_Min_off = (evt1_off_time[0] - (evt1_Hr_off * 3600))/60;
+		 
+		 check_saved_data();
+		/*
+	 if((read_eeprom_ind_weekdays[0] == 11111111) || (read_eeprom_ind_weekdays[0] == 22222222) || (read_eeprom_ind_weekdays[0] == 33333333) || (read_eeprom_ind_weekdays[0] == 44444444) 
+			|| (read_eeprom_ind_weekdays[0] == 55555555) || (read_eeprom_ind_weekdays[0] == 66666666) || (read_eeprom_ind_weekdays[0] == 77777777))
+	 {
+			
+				ind_week_flag = 1;
+		 if(read_eeprom_ind_weekdays[0] == 11111111){
+				monday1_flag = 1;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+	   else if(read_eeprom_ind_weekdays[0] == 22222222){
+			  monday1_flag = 0;tuesday1_flag = 1;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 33333333){
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 1;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 44444444){
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 1;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 55555555){
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 1; saturday1_flag  = 0;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 66666666){
+			  monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 1;sunday1_flag = 0;}
+		 else if(read_eeprom_ind_weekdays[0] == 77777777){
+        monday1_flag = 0;tuesday1_flag = 0;wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag  = 0;sunday1_flag = 1;}
+ 
+      EE_Read(0x0002,&read_spr_on_time[0]); 
+			EE_Read(0x0003,&read_spr_off_time[0]); 
+		  evt1_spr_on_time = read_spr_on_time[0];  
+		  ev1_spr_off_time = read_spr_off_time[0];  
+		
+	    read_success_flag  = EE_Read(0x0004,&evt1_on_time[0]);  
+      read_success_flag  = EE_Read(0x0005,&evt1_off_time[0]);  
+				
+			evt1_Hr_on = evt1_on_time[0] / 3600;
+			evt1_Min_on = (evt1_on_time[0] - (evt1_Hr_on * 3600))/60;
+			evt1_Hr_off = evt1_off_time[0] / 3600;
+			evt1_Min_off = (evt1_off_time[0] - (evt1_Hr_off * 3600))/60;
+		  
+		  __HAL_RCC_CLEAR_RESET_FLAGS();
+			 
+	  } 
+	 else if((read_eeprom_weekdays[0] == 299593) || (read_eeprom_weekdays[0] == 266304) || (read_eeprom_weekdays[0] == 33288) || (read_eeprom_weekdays[0] == 299008) || (read_eeprom_weekdays[0] == 37376)
+      || (read_eeprom_weekdays[0] == 299584) || (read_eeprom_weekdays[0] == 9) || (read_eeprom_weekdays[0] == 299592))
+	 {
+			ind_week_flag = 0;
+			if(read_eeprom_weekdays[0] == 299593)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 1; saturday_flag = 1; sunday_flag = 1;
+			}
+			else if(read_eeprom_weekdays[0] == 266304)	
+			{
+				monday_flag = 1; tuesday_flag = 0; wednesday_flag = 1; thursday_flag = 0; friday_flag = 1; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 33288)	
+			{
+				monday_flag = 0; tuesday_flag = 1; wednesday_flag = 0; thursday_flag = 1; friday_flag = 0; saturday_flag = 1; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 299008)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 0; friday_flag = 0; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 37376)	
+			{
+				monday_flag = 0; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 0; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 299584)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 1; saturday_flag = 0; sunday_flag = 0;
+			}
+			else if(read_eeprom_weekdays[0] == 9)	
+			{
+				monday_flag = 0; tuesday_flag = 0; wednesday_flag = 0; thursday_flag = 0; friday_flag = 0; saturday_flag = 1; sunday_flag = 1;
+			}
+			else if(read_eeprom_weekdays[0] == 299592)	
+			{
+				monday_flag = 1; tuesday_flag = 1; wednesday_flag = 1; thursday_flag = 1; friday_flag = 1; saturday_flag = 1; sunday_flag = 0;
+			}
+		
+      EE_Read(0x0002,&read_spr_on_time[0]); 
+			EE_Read(0x0003,&read_spr_off_time[0]); 
+		  evt1_spr_on_time = read_spr_on_time[0];  
+		  ev1_spr_off_time = read_spr_off_time[0];  
+ 
+	    read_success_flag  = EE_Read(0x0004,&evt1_on_time[0]);  
+		  read_success_flag  = EE_Read(0x0005,&evt1_off_time[0]); 
+
+			evt1_Hr_on = evt1_on_time[0] / 3600;
+			evt1_Min_on = (evt1_on_time[0] - (evt1_Hr_on * 3600))/60;
+			evt1_Hr_off = evt1_off_time[0] / 3600;
+			evt1_Min_off = (evt1_off_time[0] - (evt1_Hr_off * 3600))/60;	
+			 
+		  __HAL_RCC_CLEAR_RESET_FLAGS();
+	  }
+		*/
+	} 
+}
+void Event1_Backup_Setting(void)
+{ 
+	if(save_data_eeprom_flag)
+	{	
+		if(day_counter == 2)
+		{	 
+		/* Individual Weekdays: 01000000 00100000 00100000 00010000 00001000 00000100 00000010 00000001  */
+			 HAL_GPIO_DeInit(GPIOB, GPIO_PIN_10);
+			 HAL_GPIO_DeInit(GPIOB, GPIO_PIN_12);
+			 HAL_GPIO_DeInit(GPIOB, GPIO_PIN_13);
+			 HAL_GPIO_DeInit(GPIOB, GPIO_PIN_14);
+			 HAL_GPIO_DeInit(GPIOB, GPIO_PIN_15); 
+			
+			 EE_Format();
+			 HAL_Delay(10);
+			 
+		   if(monday1_flag)
+			 {
+				 arr_comb[0] = 11111111;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);
+			 }
+			 else if(tuesday1_flag)
+			 {
+				 arr_comb[0] = 22222222;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);
+			 }
+			 else if(wednesday1_flag)
+			 {
+				 arr_comb[0] = 33333333;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);			 
+			 }
+			 else if(thursday1_flag)
+			 {
+				 arr_comb[0] = 44444444;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);			 
+			 }
+			 else if(friday1_flag)
+			 {
+				 arr_comb[0] = 55555555;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);		 
+			 }
+			 else if(saturday1_flag)
+			 {
+				 arr_comb[0] = 66666666;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);			 
+			 }
+			 else if(sunday1_flag) 
+			 {
+				 arr_comb[0] = 77777777;
+				 write_success_flag = EE_Write(0x0000,arr_comb[0]);			 
+			 }
+			 else 
+			 {
+				 arr_comb[0] = 00000000;
+			 }		
+			 write_success_flag = EE_Write(0x0002,evt1_spr_on_time);	 
+			 write_success_flag = EE_Write(0x0003,ev1_spr_off_time);	 
+			 uint32_t evt1_on_time_convert = 3600 * evt1_Hr_on + 60 * evt1_Min_on;
+			 uint32_t evt1_off_time_convert = 3600 * evt1_Hr_off + 60 * evt1_Min_off;
+			 
+			 write_success_flag = EE_Write(0x0004,evt1_on_time_convert);	 
+   		 write_success_flag = EE_Write(0x0005,evt1_off_time_convert); 
+			 ind_week_write_flag = 1;
+			 
+		 } 
+		else
+		{ 
+			/* Week combination: 01111111 01010100 00101010 01110000 00111000 01111100 00000011 01111110 */
+			 EE_Format();
+			 HAL_Delay(10);
+			 if(monday_flag && tuesday_flag && wednesday_flag && thursday_flag && friday_flag && saturday_flag && sunday_flag)
+			 {
+				 arr_week_comb[0] = 01111111; // 299593
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);
+			 }
+			 else if(monday_flag && !tuesday_flag && wednesday_flag && !thursday_flag && friday_flag && !saturday_flag && !sunday_flag)
+			 {
+				 arr_week_comb[0] = 01010100; // 266304
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);
+			 }
+			 else if(!monday_flag && tuesday_flag && !wednesday_flag && thursday_flag && !friday_flag && saturday_flag && !sunday_flag)
+			 {
+				 arr_week_comb[0] = 00101010; // 33288
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);			 
+			 }
+			 else if(monday_flag && tuesday_flag && wednesday_flag && !thursday_flag && !friday_flag && !saturday_flag && !sunday_flag)
+			 {
+				 arr_week_comb[0] = 01110000; // 299008
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);			 
+			 }
+			 else if(!monday_flag && tuesday_flag && wednesday_flag && thursday_flag && !friday_flag && !saturday_flag && !sunday_flag)
+			 {
+				 arr_week_comb[0] = 00111000; // 37376
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);		 
+			 }
+			 else if(monday_flag && tuesday_flag && wednesday_flag && thursday_flag && friday_flag && !saturday_flag && !sunday_flag)
+			 {
+				 arr_week_comb[0] = 01111100; // 299584
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);			 
+			 }
+			 else if(!monday_flag && !tuesday_flag && !wednesday_flag && !thursday_flag && !friday_flag && saturday_flag && sunday_flag) 
+			 {
+				 arr_week_comb[0] = 00000011; //9
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);			 
+			 }
+			 else if(monday_flag && tuesday_flag && wednesday_flag && thursday_flag && friday_flag && saturday_flag && !sunday_flag) 
+			 {
+				 arr_week_comb[0] = 01111110;	// 299592	 
+				 write_success_flag = EE_Write(0x0001,arr_week_comb[0]);			 
+			 }
+			 else 
+			 {
+				 //arr_week_comb[0] = 00000000;
+				 //EE_Write(1,arr_week_comb[0]);		
+			 }
+			 write_success_flag = EE_Write(0x0002,evt1_spr_on_time);	 
+			 write_success_flag = EE_Write(0x0003,ev1_spr_off_time);	 
+			 
+			 uint32_t evt1_on_time_convert = 3600 * evt1_Hr_on + 60 * evt1_Min_on;
+			 uint32_t evt1_off_time_convert = 3600 * evt1_Hr_off + 60 * evt1_Min_off;
+			 
+			 write_success_flag = EE_Write(0x0004,evt1_on_time_convert);	 
+   		 write_success_flag = EE_Write(0x0005,evt1_off_time_convert);  
+	     week_write_flag = 1;
+	   } 
+	}
+	save_data_eeprom_flag = 0;
+  MX_GPIO_Init();
+}
+void check_user_time_weekday_validity_present_day(void)
+{
+	if((rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+	{
+		 event1_timer_on_flag = 1;
+	}
+	else
+	{
+		 event1_timer_on_flag = 0;
+	}
+}
+void weekday_condition_check(void)
+{
+	if((rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+		event1_timer_on_flag = 1;
+	else
+		event1_timer_on_flag = 0;
+}
+void Event1_Profile_Setting(void)
+{
+	get_time_date();
+	rtc_cal_time = (get_rtc_hour * 3600) +  (get_rtc_min * 60);
+	user_cal_on_time = (evt1_Hr_on * 3600) + (evt1_Min_on * 60) ;
+	user_cal_off_time = (evt1_Hr_off * 3600) + (evt1_Min_off * 60);
+	
+	if(monday1_flag || tuesday1_flag || wednesday1_flag || thursday1_flag || friday1_flag || saturday1_flag || sunday1_flag)
+	{
+		if(weekday == 0x01 && monday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+		  event1_timer_on_flag = 1;	 
+		else if(weekday == 0x02 && tuesday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+			event1_timer_on_flag = 1;	 
+		else if(weekday == 0x03 && wednesday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+			event1_timer_on_flag = 1;	 	
+		else if(weekday == 0x04 && thursday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+			 event1_timer_on_flag = 1;		 
+		else if(weekday == 0x05 && friday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+			 event1_timer_on_flag = 1;	  
+		else if(weekday == 0x06 && saturday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+			 event1_timer_on_flag = 1;	 
+		else if(weekday == 0x00 && sunday1_flag && (rtc_cal_time >= user_cal_on_time && rtc_cal_time <= user_cal_off_time))
+			 event1_timer_on_flag = 1;	  
+		else
+			 event1_timer_on_flag = 0;	
+	}
+	if(monday_flag && tuesday_flag && wednesday_flag && thursday_flag && friday_flag && saturday_flag && sunday_flag)
+	{
+		if(weekday == 1 || weekday == 2 || weekday == 3 || weekday == 4 || weekday == 5 || weekday == 6 || weekday == 0)
+		{
+      weekday_condition_check();
+	  }
+	}
+	if(monday_flag && !tuesday_flag && wednesday_flag && !thursday_flag && friday_flag && !saturday_flag && !sunday_flag)
+	{	
+		if(weekday == 1 || weekday == 3 || weekday == 5)
+		{
+		  weekday_condition_check();
+	  }
+	}
+	if(!monday_flag && tuesday_flag && !wednesday_flag && thursday_flag && !friday_flag && saturday_flag && !sunday_flag)
+	{
+	  if(weekday == 2 || weekday == 4 || weekday == 6)
+		{
+			weekday_condition_check();
+		}
+	}
+	if(monday_flag && tuesday_flag && wednesday_flag && !thursday_flag && !friday_flag && !saturday_flag && !sunday_flag)
+	{		
+		if(weekday == 1 || weekday == 2 || weekday == 3)
+		{
+			weekday_condition_check();
+		}
+	}	
+	if(!monday_flag && tuesday_flag && wednesday_flag && thursday_flag && !friday_flag && !saturday_flag && !sunday_flag)
+	{				
+		if(weekday == 2 || weekday == 3 || weekday == 4)
+		{
+			 weekday_condition_check();		
+	  }
+	}
+	if(monday_flag && tuesday_flag && wednesday_flag && thursday_flag && friday_flag && !saturday_flag && !sunday_flag)
+	{
+		if(weekday == 1 || weekday == 2 || weekday == 3 || weekday == 4 || weekday == 5)
+		{
+			weekday_condition_check();
+	  }
+	}
+	if(!monday_flag && !tuesday_flag && !wednesday_flag && !thursday_flag && !friday_flag && saturday_flag && sunday_flag)
+	{
+		if(weekday == 6 || weekday == 0)
+		{
+			weekday_condition_check();		
+	  }
+	}
+	if(monday_flag && tuesday_flag && wednesday_flag && thursday_flag && friday_flag && saturday_flag && !sunday_flag)
+	{		
+		if(weekday == 1 || weekday == 2 || weekday == 3 || weekday == 4 || weekday == 5 || weekday == 6)
+		{
+			weekday_condition_check();		
+		}
+	}
+}
+void Event1_Spr_Time_On_control(void)
+{
+	if(event1_spr_time_on_flag)
+	{
+		if(up_flag)
+		{
+			if(X6 == 65)
+			{
+				evt1_spr_on_time++;
+				if(evt1_spr_on_time > 100)
+					evt1_spr_on_time = 0;
+			}
+		}
+		if(down_flag)
+		{
+			if(X6 == 65)
+			{
+				evt1_spr_on_time--;
+				if(evt1_spr_on_time < 0)
+				 evt1_spr_on_time = 100;
+			}
+		}
+  }
+}
+void Event1_Spr_Time_Off_control(void)
+{
+	if(event1_spr_time_off_flag)
+	{
+		if(up_flag)
+		{
+			if(X6 == 65)
+			{
+				ev1_spr_off_time += 10;
+				if(ev1_spr_off_time > 900)
+					ev1_spr_off_time = 0;
+			}
+		}
+		if(down_flag)
+		{
+			if(X6 == 65)
+			{
+				ev1_spr_off_time -= 10;
+				if(ev1_spr_off_time < 0)
+				 ev1_spr_off_time = 900;
+			}
+		}
+  }
+}
+void Event1_Hr_Min_On_Control(void)
+{
+	if(up_flag)
+	{
+		if(X5 == 55)
+		{
+			evt1_Hr_on++;
+			if(evt1_Hr_on > 23)
+				evt1_Hr_on = 0;
+		}
+		if(X5 == 85)
+		{
+			evt1_Min_on++;
+			if(evt1_Min_on > 59)
+				evt1_Min_on = 0;
+		}
+	}
+	if(down_flag)
+	{
+		if(X5 == 55)
+		{
+			evt1_Hr_on--;
+			if(evt1_Hr_on < 0)
+			 evt1_Hr_on = 23;
+		}
+		if(X5 == 85)
+		{
+			evt1_Min_on--;
+			if(evt1_Min_on < 0)
+				evt1_Min_on = 59;
+		}
+	}
+}
+void Event1_Hr_Min_Off_Control(void)
+{
+  if(up_flag)
+	{
+		if(X5 == 55)
+		{
+			evt1_Hr_off++;
+			if(evt1_Hr_off > 23)
+				evt1_Hr_off = 0;
+		}
+		if(X5 == 85)
+		{
+			evt1_Min_off++;
+			if(evt1_Min_off > 59)
+				evt1_Min_off = 0;
+		}
+	}
+	if(down_flag)
+	{
+		if(X5 == 55)
+		{
+			evt1_Hr_off--;
+			if(evt1_Hr_off < 0)
+			 evt1_Hr_off = 23;
+		}
+		if(X5 == 85)
+		{
+			evt1_Min_off--;
+			if(evt1_Min_off < 0)
+				evt1_Min_off = 59;
+		}
+	}
+}
+void Event1_Timing_On_Control(void)
+{
+	if(gui_blink_on_flag && event1_on_timing_control_flag) 
+	{
+		ssd1306_SetCursor(0,0);
+		ssd1306_WriteString(arr_weekcomb,Font_7x10, White); 
+		ssd1306_SetCursor(0,25);
+		ssd1306_WriteString("Event1:",Font_7x10, White); 
+		ssd1306_SetCursor(0,40);
+		ssd1306_WriteString("On",Font_7x10, White); 
+		ssd1306_SetCursor(0,50);
+		ssd1306_WriteString("Time",Font_7x10, White);   
+		if(X5 == 55)
+		{
+			ssd1306_SetCursor(55,20); 
+			sprintf((char*)evt1_daily_on_time,"%02d:",evt1_Hr_on); 
+		}
+		if(X5 == 85)
+		{
+			ssd1306_SetCursor(90,20);
+			sprintf((char*)evt1_daily_on_time,"%02d",evt1_Min_on); 
+		}
+		ssd1306_WriteString(evt1_daily_on_time,Font_11x18, White);  
+		ssd1306_UpdateScreen();  
+	}
+	if(gui_blink_off_flag && event1_on_timing_control_flag)
+	{
+		ssd1306_SetCursor(0,40);
+		ssd1306_WriteString("  ",Font_7x10, White); 
+		ssd1306_SetCursor(0,50);
+		ssd1306_WriteString("    ",Font_7x10, White);
+
+		if(X5 == 55){
+			ssd1306_SetCursor(55,20);
+			sprintf((char*)evt1_daily_on_time,"  "); 
+		}
+		if(X5 == 85){		
+			ssd1306_SetCursor(90,20);
+			sprintf((char*)evt1_daily_on_time,"  "); 
+		}
+		ssd1306_WriteString(evt1_daily_on_time,Font_11x18, White); 
+		ssd1306_UpdateScreen();
+	} 
+}
+void Event1_Timing_Off_Control(void)
+{
+		ssd1306_SetCursor(0,0);
+		ssd1306_WriteString(arr_weekcomb,Font_7x10, White); 
+		ssd1306_SetCursor(0,25);
+		ssd1306_WriteString("Event1:",Font_7x10, White); 
+		ssd1306_SetCursor(0,40);
+		ssd1306_WriteString("Off",Font_7x10, White); 
+		ssd1306_SetCursor(0,50);
+		ssd1306_WriteString("Time",Font_7x10, White);  
+		if(gui_blink_on_flag )
+		{
+			if(X5 == 55)
+			{
+				ssd1306_SetCursor(55,20);
+				sprintf((char*)evt1_daily_off_time,"%02d:",evt1_Hr_off); 
+			}
+			if(X5 == 85)
+			{
+				ssd1306_SetCursor(90,20);
+				sprintf((char*)evt1_daily_off_time,"%02d",evt1_Min_off); 
+			}
+			ssd1306_WriteString(evt1_daily_off_time,Font_11x18, White);  
+			ssd1306_UpdateScreen();  
+		}
+	
+	if(gui_blink_off_flag)
+	{
+			ssd1306_SetCursor(0,40);
+			ssd1306_WriteString("   ",Font_7x10, White); 
+			ssd1306_SetCursor(0,50);
+			ssd1306_WriteString("    ",Font_7x10, White);
+
+			if(X5 == 55){
+				ssd1306_SetCursor(55,20);
+				sprintf((char*)evt1_daily_off_time,"  ");
+			}
+			if(X5 == 85){		
+				ssd1306_SetCursor(90,20);
+				sprintf((char*)evt1_daily_off_time,"  ");
+			}
+			ssd1306_WriteString(evt1_daily_off_time,Font_11x18, White); 
+			ssd1306_UpdateScreen();
+	 }  
+}
+void flag_check_everyday(void)
+{
+	if(w_day < 7 && day_counter == 2)
+	{
+		if(w_day == 0)
+			monday1_flag = 1;
+		else 
+			monday1_flag = 0;			
+		if(w_day == 1)			
+			tuesday1_flag = 1;
+		else 
+			tuesday1_flag = 0;		
+		if(w_day == 2)				
+			wednesday1_flag = 1;
+		else 
+			wednesday1_flag = 0;		
+		if(w_day == 3)			
+			thursday1_flag = 1;
+		else
+			thursday1_flag = 0;
+		if(w_day == 4)			
+			friday1_flag = 1;
+		else
+			friday1_flag = 0;		
+		if(w_day == 5)
+			saturday1_flag = 1;
+		else
+			saturday1_flag = 0;
+		if(w_day == 6)
+			sunday1_flag = 1;
+		else 
+			sunday1_flag = 0; 
+	}
+}
+void weekday_blink_general(uint8_t time_delay)
+{
+	if(event_one_flag)
+	{
+		if(day_counter == 1){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			arr_weekcomb = "M TU WE TH FR SA S";
+      monday_flag = 1;
+			tuesday_flag = 1;
+			wednesday_flag = 1;
+			thursday_flag = 1;
+			friday_flag = 1;
+			saturday_flag = 1;
+			sunday_flag = 1;
+		}			
+		if(day_counter == 2){
+			monday_flag = 0; tuesday_flag = 0; wednesday_flag = 0; thursday_flag = 0;friday_flag = 0; saturday_flag = 0;sunday_flag = 0;
+			ssd1306_SetCursor(0,0);
+			ssd1306_WriteString("                   ",Font_7x10, White);
+			arr_weekcomb =  WEEKS[w_day];
+	  }
+		if(day_counter == 3){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			arr_weekcomb = "MON  WED   FRI    ";
+			monday_flag = 1;
+			tuesday_flag = 0;
+			wednesday_flag = 1;
+			thursday_flag = 0;
+			friday_flag = 1;
+			saturday_flag = 0;
+			sunday_flag = 0;
+		}
+		if(day_counter == 4){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			arr_weekcomb = "TUE  THU   SAT    ";
+			monday_flag = 0;
+			tuesday_flag = 1;
+			wednesday_flag = 0;
+			thursday_flag = 1;
+			friday_flag = 0;
+			saturday_flag = 1;
+			sunday_flag = 0;
+		}
+		if(day_counter == 5){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			arr_weekcomb = "MON  TUE  WED     ";
+			monday_flag = 1;
+			tuesday_flag = 1;
+			wednesday_flag = 1;
+			thursday_flag = 0;
+			friday_flag = 0;
+			saturday_flag = 0;
+			sunday_flag = 0;
+		}
+		if(day_counter == 6){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			arr_weekcomb = "TUE  WED  THU     ";
+			monday_flag = 0;
+			tuesday_flag = 1;
+			wednesday_flag = 1;
+			thursday_flag = 1;
+			friday_flag = 0;
+			saturday_flag = 0;
+			sunday_flag = 0;
+		}
+		if(day_counter == 7){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			arr_weekcomb = "MON TUE WED THU FR";
+			monday_flag = 1;
+			tuesday_flag = 1;
+			wednesday_flag = 1;
+			thursday_flag = 1;
+			friday_flag = 1;
+			saturday_flag = 0;
+			sunday_flag = 0;
+		}
+		if(day_counter == 8){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+		  arr_weekcomb = "SAT  SUN          ";
+			monday_flag = 0;
+			tuesday_flag = 0;
+			wednesday_flag = 0;
+			thursday_flag = 0;
+			friday_flag = 0;
+			saturday_flag = 1;
+			sunday_flag = 1;
+		}
+		if(day_counter == 9){
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+		  arr_weekcomb = "MON TU WE TH FR SA";		
+			monday_flag = 1;
+			tuesday_flag = 1;
+			wednesday_flag = 1;
+			thursday_flag = 1;
+			friday_flag = 1;
+			saturday_flag = 1;
+			sunday_flag = 0;
+		}
+
+		if(up_flag && day_counter == 2)
+		{
+			w_day++;
+			if(w_day > 6){
+				w_day = 0;
+				day_counter++;
+			}
+		}
+		if(down_flag && day_counter == 2)
+		{
+			w_day--;
+			if(w_day < 0)
+				w_day = 6;
+	  }
+		flag_check_everyday();	
+		if(gui_blink_on_flag)
+		{
+		  ssd1306_SetCursor(0,0);
+		  ssd1306_WriteString(arr_weekcomb,Font_7x10, White); 
+		  ssd1306_UpdateScreen(); 
+		}
+		if(gui_blink_off_flag)
+		{
+			ssd1306_SetCursor(0,0);
+			ssd1306_WriteString("                   ",Font_7x10, White);
+			ssd1306_UpdateScreen();
+		}
+	  if(left_flag && (monday_flag || tuesday_flag || wednesday_flag || thursday_flag || friday_flag || saturday_flag))
+	  {
+			monday1_flag = 0;tuesday1_flag = 0; wednesday1_flag = 0;thursday1_flag = 0;friday1_flag = 0; saturday1_flag = 0;sunday1_flag = 0;
+			weekdays_sel_flag = 1;
+			individual_weekday_flag = 0;
+			ssd1306_SetCursor(0,0);
+			ssd1306_WriteString(arr_weekcomb,Font_7x10, White); 
+			ssd1306_UpdateScreen(); 
+		  event_one_flag = 0;
+			event1_on_timing_control_flag = 1;
+	  }
+	  if(left_flag && day_counter == 2)
+	  {
+		  monday_flag = 0; tuesday_flag = 0; wednesday_flag = 0; thursday_flag = 0;friday_flag = 0; saturday_flag = 0;sunday_flag = 0;
+		  weekdays_sel_flag = 0;
+		  individual_weekday_flag = 1;
+		  ssd1306_SetCursor(0,0);
+		  ssd1306_WriteString(arr_weekcomb,Font_7x10, White); 
+		  ssd1306_UpdateScreen(); 
+		  event_one_flag = 0;
+			event1_on_timing_control_flag = 1;
+	  }
+   }
+}
+void Sprinkle_Event1_Setup(void)
+{
+  if(X == 92 && menu_flag)
+	{  
+		do
+		{
+			 display_off_flag = 0;
+			 event1_menu_flag = 1;
+			 menu_on_flag = 0;
+			 event1_gui_on_flag = 0;
+			 event1_gui_off_flag = 0;
+			 day_counter = 1;
+			 w_day = 0;
+			 event_one_flag = 1;
+			 ssd1306_Fill(Black); 
+			 ssd1306_SetCursor(0,0);
+			 ssd1306_WriteString("M TU WE TH FR SA S",Font_7x10, White); 
+			 do
+			 {
+				 display_off_flag = 0;
+				 event_one_flag = 1; 
+				 ssd1306_SetCursor(0,25);
+				 ssd1306_WriteString("Event1:",Font_7x10, White); 		 
+				 ssd1306_UpdateScreen();
+				 weekday_blink_general(3);
+			 }while(event_one_flag != 0);
+			
+			 do
+			 {
+				 display_off_flag = 0;
+				 event1_on_timing_control_flag = 1;
+				 Event1_Timing_On_Control(); 
+				 if(menu_flag)
+				 {
+					 ssd1306_SetCursor(55,20);
+					 sprintf((char*)evt1_daily_on_time,"%02d:%02d",evt1_Hr_on,evt1_Min_on);
+           ssd1306_WriteString(evt1_daily_on_time,Font_11x18, White); 					 
+					 ssd1306_UpdateScreen(); 					 
+					 event1_on_timing_control_flag = 0;
+					 X = 54;
+				 }
+			 }while(event1_on_timing_control_flag != 0);
+			 HAL_Delay(500);
+			 do
+			 {
+				 display_off_flag = 0;
+				 event1_off_timing_control_flag = 1;
+				 Event1_Timing_Off_Control(); 
+				 if(menu_flag)
+				 {
+					 ssd1306_SetCursor(55,20);
+					 sprintf((char*)evt1_daily_off_time,"%02d:%02d",evt1_Hr_off,evt1_Min_off); 
+					 ssd1306_WriteString(evt1_daily_off_time,Font_11x18, White); 
+					 ssd1306_UpdateScreen(); 
+					 event1_menu_flag = 0;
+					 setting_menu_flag = 1;
+					 event1_off_timing_control_flag = 0;
+				 }
+			 }while(event1_off_timing_control_flag);
+			 HAL_Delay(500);
+			 do
+			 { 
+				   display_off_flag = 0;
+					 event1_gui_on_flag = 0;
+					 event1_gui_off_flag = 0;
+					 event1_spr_time_on_flag = 1;
+
+					if(gui_blink_on_flag)
+					{ 						 
+						ssd1306_SetCursor(0,25);
+						ssd1306_WriteString("Event1:",Font_7x10, White);  
+						ssd1306_SetCursor(0,40);
+						ssd1306_WriteString("Spray",Font_7x10, White); 
+						ssd1306_SetCursor(0,50);
+						ssd1306_WriteString("On Time",Font_7x10, White);  
+						ssd1306_UpdateScreen();  
+						 if(X6 == 65)
+						 {
+							 Event1_Spr_Time_On_control();
+							 ssd1306_SetCursor(0,25);
+						   SSD1306_DrawFilledRectangle(40, 20, 50, 20, Black);
+							 ssd1306_SetCursor(58,20);
+							 sprintf((char*)Evt1_Spr_On_Time,"%02d",evt1_spr_on_time); 
+						 }
+						ssd1306_WriteString(Evt1_Spr_On_Time,Font_16x26, White);  
+						ssd1306_UpdateScreen();  
+					}
+					if(gui_blink_off_flag)
+					{ 
+						ssd1306_SetCursor(0,40);
+						ssd1306_WriteString("     ",Font_7x10, White); 
+						ssd1306_SetCursor(0,50);
+						ssd1306_WriteString("        ",Font_7x10, White);  
+						 if(X6 == 65){
+							 ssd1306_SetCursor(58,20);
+							 sprintf((char*)Evt1_Spr_On_Time,"      ");
+						 }
+						ssd1306_WriteString(Evt1_Spr_On_Time,Font_16x26, White); 
+						ssd1306_UpdateScreen();
+					}
+					if(menu_flag)		
+					{								 
+						ssd1306_SetCursor(58,20);
+						sprintf((char*)Evt1_Spr_On_Time,"%02d",evt1_spr_on_time);
+						ssd1306_WriteString(Evt1_Spr_On_Time,Font_16x26, White); 
+						ssd1306_UpdateScreen(); 
+						event1_spr_time_on_flag = 0;	
+					}
+			 }while(event1_spr_time_on_flag);
+			 HAL_Delay(500);
+			 do
+			 {
+				  display_off_flag = 0;
+					event1_gui_on_flag = 0;
+					event1_gui_off_flag = 0;
+					event1_spr_time_on_flag = 0;
+					event1_spr_time_off_flag = 1;
+
+					if(gui_blink_on_flag)
+					{ 						
+						ssd1306_SetCursor(0,25);
+						ssd1306_WriteString("Event1:",Font_7x10, White); 
+						ssd1306_SetCursor(0,40);
+						ssd1306_WriteString("Spray",Font_7x10, White); 
+						ssd1306_SetCursor(0,50);
+						ssd1306_WriteString("Off Time",Font_7x10, White);  
+						ssd1306_UpdateScreen();  
+						if(X6 == 65)
+						{
+							Event1_Spr_Time_Off_control();
+						  ssd1306_SetCursor(0,25);
+						  SSD1306_DrawFilledRectangle(40, 20, 50, 20, Black);
+							ssd1306_SetCursor(58,20);
+							sprintf((char*)Evt1_Spr_Off_Time,"%02d",ev1_spr_off_time); 
+						}
+						ssd1306_WriteString(Evt1_Spr_Off_Time,Font_16x26, White);  
+						ssd1306_UpdateScreen();  
+					}
+					if(gui_blink_off_flag)
+					{ 
+						Event1_Spr_Time_Off_control();
+						ssd1306_SetCursor(0,40);
+						ssd1306_WriteString("     ",Font_7x10, White); 
+						ssd1306_SetCursor(0,50);
+						ssd1306_WriteString("        ",Font_7x10, White);  
+						if(X6 == 65){
+							ssd1306_SetCursor(58,20);
+							sprintf((char*)Evt1_Spr_Off_Time,"      ");
+						}
+						ssd1306_WriteString(Evt1_Spr_Off_Time,Font_16x26, White); 
+						ssd1306_UpdateScreen(); 
+					}
+					if(menu_flag)
+				  {
+						ssd1306_SetCursor(58,20);
+						sprintf((char*)Evt1_Spr_Off_Time,"%02d",ev1_spr_off_time);
+						ssd1306_WriteString(Evt1_Spr_Off_Time,Font_16x26, White);  
+						ssd1306_UpdateScreen(); 
+					  Event1_Profile_Setting();
+					  event1_menu_flag = 0;
+					  setting_menu_flag = 1; 
+					  save_data_eeprom_flag = 1; 
+					  event1_spr_time_off_flag = 0;
+				  }	
+			 }while(event1_spr_time_off_flag);
+		}
+		while(event1_menu_flag);
+	}
+}
+void Sprinkle_Daily_Routine_Setup(void)
+{
+ if(get_rtc_hour >=8 && get_rtc_hour < 20)
+	sprinkle_daily_on_flag = 1;
+ else
+	sprinkle_daily_on_flag = 0;
+}
+void Oled_GUI_Graphics_Test(void)
+{
+	SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+	ssd1306_UpdateScreen();
+}
+void Oled_Display_On_Off_Flag(void)
+{
+	if(up_flag || down_flag || left_flag || right_flag)
+	{
+		display_on_flag = 1;
+		display_on_count = 0;
+	}
+	if(display_on_count > blink_time)
+	{
+		display_off_flag = 1;
+	}
+}
+void Oled_Sleep_Control(void)
+{
+  if(display_on_flag)
+  {  
+		/*
+	__HAL_RCC_I2C1_CLK_ENABLE();
+	__HAL_I2C_ENABLE(&hi2c1); 
+	  HAL_I2C_MspInit(&hi2c1); 
+	  MX_I2C1_Init();
+		*/
+	  SSD1306_ON();  
+	  display_on_flag = 0;
+  }
+  if(display_off_flag)
+  {
+	  SSD1306_OFF();  
+	  display_off_flag = 0;			 
+  }
+}
+void Oled_Gui_Set_Time(void)
+{
+	if(X == 16 && menu_flag )
+	{
+	 do
+	 {
+		 display_off_flag = 0;
+		 spr_sec = 0;
+		 time_gui_flag = 1; 
+		 ssd1306_Fill(Black); 
+		 SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+		 ssd1306_SetCursor(20,28);
+		 sprintf((char*)time,"%02d:%02d:%02d",gTime_Hr,gTime_Min,gTime_Sec);
+		 ssd1306_WriteString(time,Font_11x18, White); 
+		 ssd1306_UpdateScreen();
+		 gui_update_flag = 0;
+		 GUI_Navigator_Time();
+		 GUI_Time_Data_Setting(); 
+		 if(menu_flag){
+			 time_gui_flag = 0; 
+			 time_set_flag = 1;
+		 }
+		 
+	 }while(time_gui_flag);
+	  //USER_RTC_Time_Init(uint2bcd(gTime_Hr),uint2bcd(gTime_Min),uint2bcd(gTime_Sec));
+  } 
+}
+void Oled_Gui_Set_Date(void)
+{
+	if(X == 54 && menu_flag)
+	{
+	 do
+	 {
+		 display_off_flag = 0;
+		 spr_sec = 0;
+		 date_gui_flag = 1; 
+		 ssd1306_Fill(Black); 
+		 SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+		 ssd1306_SetCursor(20,28);
+		 sprintf((char*)date,"%02d:%02d:%02d",gDate_Date,gDate_Month,gDate_Year);
+		 ssd1306_WriteString(date,Font_11x18, White); 
+		 ssd1306_UpdateScreen();
+		 gui_update_flag = 0;
+		 GUI_Navigator_Date();
+		 GUI_Date_Data_Setting(); 
+		 if(menu_flag){
+			 date_gui_flag = 0; 
+		   date_set_flag = 1;
+		 }
+	 }while(date_gui_flag);
+	 
+	  //USER_RTC_Date_Init(uint2bcd(gDate_Date),uint2bcd(gDate_Month),uint2bcd(gDate_Year));
+  } 
+}
+void Oled_Gui_Set_Sprinkle_Time(void)
+{
+	if(X == 92 && menu_flag)
+	{
+	 do
+	 {
+		 spr_sec = 0;
+		 sprinkle_gui_flag = 1; 
+		 ssd1306_Fill(Black); 
+		 SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+		 ssd1306_SetCursor(2,15);
+		 ssd1306_WriteString("  ON TIME:",Font_11x18, White);
+     ssd1306_SetCursor(25,40);		 
+     sprintf(S_ON," %02d:%02d",Ton_Min,Ton_Sec);
+   	 ssd1306_WriteString(S_ON,Font_11x18, White);  
+     ssd1306_UpdateScreen();
+		 GUI_Navr_Sprinkler_ON();
+		 GUI_spr_On_Setting();
+		 gui_update_flag = 0;
+		 
+		 if(left_flag && right_flag)
+		 {
+			 do
+			 {
+				 spr_sec = 0;
+				 ssd1306_Fill(Black);
+	       SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 				 
+				 ssd1306_SetCursor(2,15);
+				 ssd1306_WriteString(" OFF TIME:",Font_11x18, White);
+				 ssd1306_SetCursor(25,40);		 
+				 sprintf(S_OFF," %02d:%02d",Toff_Min,Toff_Sec);
+				 ssd1306_WriteString(S_OFF,Font_11x18, White);  
+				 ssd1306_UpdateScreen();
+				 GUI_Navr_Sprinkler_OFF();
+				 GUI_spr_Off_Setting();	
+			 }while(!menu_flag);				 
+		 }
+		 if(menu_flag)
+			 sprinkle_gui_flag = 0; 
+	 }while(sprinkle_gui_flag);
+  } 
+}
+void GUI_Navigator(_Bool gui_update_flag)
+{   
+  if(left_flag && setting_menu_flag)
+	{
+    SSD1306_DrawRectangle(X,Y,25,25,White); 
+		ssd1306_UpdateScreen();
+ 
+		X = X - 38;
+	  if(X < 16)
+	  	X = 92;
+		Y = Y + 0;
+	}
+	if(right_flag && setting_menu_flag)
+	{ 
+		  SSD1306_DrawRectangle(X,Y,25,25,White); 
+		  ssd1306_UpdateScreen();
+		 
+			X = X + 38;
+		  if(X > 127)
+			  X = 16;
+		  Y = Y + 0;
+	}
+	
+	if(setting_menu_flag)
+	{
+		 SSD1306_DrawRectangle(X,Y,25,25,White); 
+		 ssd1306_UpdateScreen();
+	}
+	
+}
+void GUI_Navigator_Time(void)
+{
+	if(left_flag && time_gui_flag)
+	{
+    SSD1306_DrawRectangle(X1,Y1,25,25,White); 
+		ssd1306_UpdateScreen(); 
+      X1 = X1 - 31;
+	  if(X1 < 20)
+		  X1 = 82;
+		Y1 = Y1 + 0;
+	}
+	if(right_flag && time_gui_flag)
+	{
+    SSD1306_DrawRectangle(X1,Y1,25,25,White); 
+		ssd1306_UpdateScreen();
+		  X1 = X1 + 31;
+		if(X1 > 82 )
+			X1 = 20;
+		Y1 = Y1 + 0;
+	}
+	  SSD1306_DrawRectangle(X1,Y1,25,25,White); 
+	  ssd1306_UpdateScreen();
+}
+void GUI_Navigator_Date(void)
+{
+	if(left_flag && date_gui_flag)
+	{
+    SSD1306_DrawRectangle(X1,Y1,25,25,White); 
+		ssd1306_UpdateScreen(); 
+      X2 = X2 - 31;
+	  if(X2 < 20)
+		  X2 = 82;
+		Y2 = Y2 + 0;
+	}
+	if(right_flag && date_gui_flag)
+	{
+    SSD1306_DrawRectangle(X1,Y1,25,25,White); 
+		ssd1306_UpdateScreen();
+		  X2 = X2 + 31;
+		if(X2 > 82 )
+			X2 = 20;
+		Y2 = Y2 + 0;
+	}
+	  SSD1306_DrawRectangle(X2,Y2,25,25,White); 
+	  ssd1306_UpdateScreen();
+}
+void GUI_Navigator_Sprinkler(void)
+{
+	if(left_flag && sprinkle_gui_flag)  
+	{ 
+    SSD1306_DrawRectangle(X3,Y3,22,18,White); 
+		ssd1306_UpdateScreen(); 
+      X3 = X3 - 32;
+	  if(X3 < 43)
+		  X3 = 75;
+		Y3 = Y3 + 0;
+		left_spr_flag = 1;
+	} 
+	if(right_flag && sprinkle_gui_flag) 
+	{ 
+    SSD1306_DrawRectangle(X3,Y3,22,18,White); 
+		ssd1306_UpdateScreen();
+		  X3 = X3 + 32;
+		if(X3 > 75 )
+			X3 = 43;
+		Y3 = Y3 + 0;
+		right_spr_flag = 1;
+	} 
+	if(up_flag && sprinkle_gui_flag)
+	{    
+		SSD1306_DrawRectangle(X3,Y3,22,18,White); 
+		ssd1306_UpdateScreen(); 
+		Y3 = Y3 + 25;
+	  if(Y3 > 40)
+			Y3 = 15;
+		up_spr_flag = 1;
+	} 
+	if(down_flag && sprinkle_gui_flag )
+	{
+		SSD1306_DrawRectangle(X3,Y3,22,18,White); 
+		ssd1306_UpdateScreen();
+		Y3 = Y3 - 25;
+	  if(Y3 < 15)
+			Y3 = 40;
+		down_spr_flag = 1;
+	} 
+
+	if(Y3 == 40 && X3 == 75 && left_flag)
+	{
+		X3 = 43;
+		Y3 = 40;
+		lf_flag = 1;
+	}
+	if(X3 == 43 && Y3 == 40 && right_flag)
+	{
+		X3 = 75;
+		Y3 = 40;
+		rf_flag =1;
+	}
+	
+	SSD1306_DrawRectangle(X3,Y3,22,18,White); 
+	ssd1306_UpdateScreen();
+	left_spr_flag = 0;
+	right_spr_flag = 0;
+	up_spr_flag = 0;
+	down_spr_flag = 0;
+	lf_flag = 0;
+	rf_flag = 0;
+}
+void GUI_Navr_Sprinkler_ON(void)
+{
+	if(left_flag && sprinkle_gui_flag)  
+	{ 
+    SSD1306_DrawRectangle(X3,Y3,25,20,White); 
+		ssd1306_UpdateScreen(); 
+      X3 = X3 - 30;
+	  if(X3 < 35)
+		  X3 = 65;
+		Y3 = Y3 + 0;
+		left_spr_flag = 1;
+	} 
+	if(right_flag && sprinkle_gui_flag) 
+	{ 
+    SSD1306_DrawRectangle(X3,Y3,25,20,White); 
+		ssd1306_UpdateScreen();
+		  X3 = X3 + 30;
+		if(X3 > 65 )
+			X3 = 35;
+		Y3 = Y3 + 0;
+		right_spr_flag = 1;
+	} 
+    SSD1306_DrawRectangle(X3,Y3,25,20,White); 
+		ssd1306_UpdateScreen();
+}
+void GUI_Navr_Sprinkler_OFF(void)
+{
+	if(left_flag && sprinkle_gui_flag)  
+	{ 
+    SSD1306_DrawRectangle(X4,Y4,25,20,White); 
+		ssd1306_UpdateScreen(); 
+      X4 = X4 - 30;
+	  if(X4 < 35)
+		  X4 = 65;
+		Y4 = Y4 + 0;
+		left_spr_flag = 1;
+	} 
+	if(right_flag && sprinkle_gui_flag) 
+	{ 
+    SSD1306_DrawRectangle(X4,Y4,25,20,White); 
+		ssd1306_UpdateScreen();
+		  X4 = X4 + 30;
+		if(X4 > 65 )
+			X4 = 35;
+		Y4 = Y4 + 0;
+		right_spr_flag = 1;
+	} 
+    SSD1306_DrawRectangle(X4,Y4,25,20,White); 
+		ssd1306_UpdateScreen();
+}
+void GUI_Time_Data_Setting(void)
+{
+	if(up_flag && time_gui_flag)
+	{
+		if(X1 == 20)
+		 gTime_Hr += 1;
+	 	if(X1 == 51)
+		 gTime_Min += 1;
+		if(X1 == 82)
+		 gTime_Sec += 1;
+		
+		if(gTime_Hr > 23)
+			gTime_Hr = 0;
+		if(gTime_Min > 59)
+			gTime_Min = 0;	
+		if(gTime_Sec > 59)	
+			gTime_Sec = 0;
+	}
+	if(down_flag && time_gui_flag)
+	{
+		if(X1 == 20)
+		 gTime_Hr -= 1;
+	 	if(X1 == 51)
+		 gTime_Min -= 1;
+		if(X1 == 82)
+		 gTime_Sec -= 1;
+		
+		if(gTime_Hr < 0)
+			gTime_Hr = 23;
+		if(gTime_Min < 0)
+			gTime_Min = 59;	
+		if(gTime_Sec < 0)	
+			gTime_Sec = 59;
+	} 
+}
+void GUI_Date_Data_Setting(void)
+{
+	if(up_flag && date_gui_flag)
+	{
+		if(X2 == 20)
+		 gDate_Date += 1;
+	 	if(X2 == 51)
+		 gDate_Month += 1;
+		if(X2 == 82)
+		 gDate_Year += 1;
+		
+		if(gDate_Date > 31)
+			gDate_Date = 1;
+		if(gDate_Month > 12)
+			gDate_Month = 1;	
+		if(gDate_Year > 99)	
+			gDate_Year = 0;
+	}
+	if(down_flag && date_gui_flag)
+	{
+		if(X2 == 20)
+		 gDate_Date -= 1;
+	 	if(X2 == 51)
+		 gDate_Month -= 1;
+		if(X2 == 82)
+		 gDate_Year -= 1;
+		
+		if(gDate_Date < 1)
+			gDate_Date = 31;
+		if(gDate_Month < 1)
+			gDate_Month = 12;	
+		if(gDate_Year < 0)	
+			gDate_Year = 99;
+	} 
+}
+void GUI_spr_On_Setting(void)
+{
+	if(up_flag && sprinkle_gui_flag)
+	{
+		if(X3 == 35)
+		{
+		 Ton_Min += 1;
+		 if(Ton_Min > 59)
+			Ton_Min = 0;
+		}			 
+		if(X3 == 65)
+		{
+		 Ton_Sec += 1;
+		 if(Ton_Sec > 59)	
+			Ton_Sec = 0;
+		}
+	}	
+	if(down_flag && sprinkle_gui_flag)
+	{
+		if(X3 == 35)
+		{
+		 Ton_Min -= 1;
+		 if(Ton_Min < 0)
+			Ton_Min = 59;
+		}			 
+		if(X3 == 65)
+		{
+		 Ton_Sec -= 1;
+		 if(Ton_Sec < 0)	
+			Ton_Sec = 59;
+		}
+	}
+		T_ON = Ton_Min * 60 + Ton_Sec;
+		rev_sec = T_OFF;
+		T1_Second = 0; 	
+}
+void GUI_spr_Off_Setting(void)
+{
+	if(up_flag && sprinkle_gui_flag)
+	{
+		if(X4 == 35)
+		{
+		 Toff_Min += 1;
+		 if(Toff_Min > 59)
+			Toff_Min = 0;
+		}			 
+		if(X4 == 65)
+		{
+		 Toff_Sec += 1;
+		 if(Toff_Sec > 59)	
+			Toff_Sec = 0;
+		}
+	}	
+	if(down_flag && sprinkle_gui_flag)
+	{
+		if(X4 == 35)
+		{
+		 Toff_Min -= 1;
+		 if(Toff_Min < 0)
+			Toff_Min = 59;
+		}			 
+		if(X4 == 65)
+		{
+		 Toff_Sec -= 1;
+		 if(Toff_Sec < 0)	
+			Toff_Sec = 59;
+		}
+	}	
+	T_OFF = Toff_Min * 60 + Toff_Sec;
+	rev_sec = T_OFF;
+	T1_Second = 0; 
+}
+void Oled_Menu(void)
+{
+	if(menu_flag)
+	{
+		do
+		{
+			display_off_flag = 0;
+			menu_on_flag = 0;
+			gui_update_flag = 1;
+			setting_menu_flag = 1;
+	    ssd1306_Fill(Black); 
+	    SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+		  ssd1306_SetCursor(35,5);
+	    ssd1306_WriteString(" SETTING",Font_7x10, White); 
+			SSD1306_DrawCircle(27, 32, 10, White);   /* Clock Design */
+			SSD1306_DrawLine(27,32,21, 28, White);   /* Clock Line   */
+			SSD1306_DrawLine(27,32,33, 28, White);   /* Clock Line   */
+			
+			SSD1306_DrawRectangle(54,23,20,20,White);   
+			SSD1306_DrawFilledRectangle(54,25,20,3,White);   /* Calender date GUI */
+		  ssd1306_SetCursor(58,30);			
+	    ssd1306_WriteString("31",Font_7x10, White); 
+			
+		  SSD1306_DrawFilledRectangle(94,23,10,20,White);  /* Sprinkle GUI      */
+			SSD1306_DrawFilledCircle(108,33,6,White);
+			
+			ssd1306_SetCursor(10,52);
+	    ssd1306_WriteString(" Time Date  Spr",Font_7x10, White);  /* Time GUI and Navigator */
+			ssd1306_UpdateScreen();
+			GUI_Navigator(1);
+			Oled_Gui_Set_Time();
+			Oled_Gui_Set_Date();
+			if(up_flag && down_flag)
+			{					
+				event1_menu_flag = 0;
+				setting_menu_flag = 0;
+				menu_on_flag  = 1;
+			  event1_menu_flag = 1;
+			}
+			if(X == 92 && menu_flag)
+			{
+				event1_menu_flag = 0;
+				setting_menu_flag = 0;
+				menu_on_flag  = 0;
+			  event1_menu_flag = 1;
+			}
+		}while(setting_menu_flag);
+	}
+}
+void Oled_GUI(void)
+{
+	if(menu_on_flag)
+	{  
+		display_off_flag = 0;
+		get_time_date();
+	  //Oled_Battery_Filling_GUI(bat_percent); 
+    RTC_DateTypeDef gDate;
+    RTC_TimeTypeDef gTime;
+		ssd1306_Fill(Black);  
+		SSD1306_DrawRectangle(0,0,SSD1306_WIDTH,SSD1306_HEIGHT,White); 
+		SSD1306_DrawRectangle(110,7,10,16,White);              /*  Vertical  Battery  */
+	  //SSD1306_DrawFilledRectangle(110,11,10,ht,White); 
+		SSD1306_DrawFilledRectangle(113,4,4,3,White);
+		ssd1306_SetCursor(20,5); 
+		ssd1306_WriteString(time,Font_16x26, White); 
+		ssd1306_SetCursor(10,28); 
+		ssd1306_WriteString(date,Font_11x18, White); 
+		ssd1306_SetCursor(36,49);
+		snprintf(buff, sizeof(buff), "S:::%d sec", rev_sec);
+		ssd1306_WriteString(buff,Font_7x10, White);	 
+		ssd1306_UpdateScreen(); 
+	}
+}
+void Operation_Indicator_Led(void)
+{
+
+}
+void micro_delay(uint16_t delay)
+{
+	for(int i = delay; i > 0; i--);
+}
+void Motor_Test(uint8_t pwm_per, uint16_t milli_delay)
+{
+	int per = 5 * pwm_per;
+	TIM2 -> CCR1 = per;;
+	micro_delay(milli_delay);
+	TIM2 -> CCR1 = per/4;
+	micro_delay(milli_delay/4);
+}
+void Fluid_Control_Low_Battery_Profile(void)
+{
+  for(int i = 40,j = 100; i < 70 && j > 0; i+=2, j--)
+  {
+	  TIM2->CCR1 = i * 5; 
+	  HAL_Delay(j);
+	  TIM2->CCR1 = 100; 
+	  HAL_Delay(j);
+  }
+}
+void Fluid_Control(void)
+{
+	if(spray_motor_on_flag)
+		Fluid_Control_Low_Battery_Profile(); 
+	else 
+		Motor_Test(0,0);   
+}
+void Navigation_key(void)
+{
+	if(UP_KEY)
+		up_flag = 1;
+	else 
+		up_flag = 0;
+	
+	if(D_KEY)
+		down_flag = 1;
+	else 
+		down_flag = 0;
+  
+	if(L_KEY)
+		left_flag = 1;
+	else 
+		left_flag = 0;
+  
+	if(R_KEY)
+		right_flag = 1;
+	else 
+		right_flag = 0;
+  
+	if(MENU_KEY)
+		menu_flag =1;
+	else 
+		menu_flag = 0;
+}
+void USER_RTC_Date_Time_Init(void)
+{
+  /* USER CODE BEGIN RTC_Init 0 */
+	if(date_set_flag || time_set_flag)
+	{
+		RTC_TimeTypeDef sTime;
+		RTC_DateTypeDef gDate;
+		RTC_DateTypeDef DateToUpdate;
+		
+		hrtc.Instance = RTC;
+		hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
+		hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+	
+		if (HAL_RTC_Init(&hrtc) != HAL_OK)
+		{
+				_Error_Handler(__FILE__, __LINE__);
+		}
+		
+		sTime.Hours = uint2bcd(gTime_Hr);
+		sTime.Minutes = uint2bcd(gTime_Min);
+		sTime.Seconds = uint2bcd(gTime_Sec);
+
+		DateToUpdate.WeekDay = gDate.WeekDay;//RTC_WEEKDAY_SATURDAY;
+		DateToUpdate.Month = uint2bcd(gDate_Month);
+		DateToUpdate.Date = uint2bcd(gDate_Date);
+		DateToUpdate.Year = uint2bcd(gDate_Year);
+		
+		HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD);  
+		HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BCD);  
+		HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, 0x32F2);  // backup register
+		date_set_flag = 0;
+		time_set_flag = 0;
+ }
+}
+extern void get_month_rtc(void)
+{  
+	RTC_DateTypeDef gDate;
+  HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+	
+	if(gDate.Month == 1)
+	  strncpy(mnth , "JAN\0", 3);
+	if(gDate.Month == 2)
+		strncpy(mnth , "FEB\0", 3);
+	if(gDate.Month == 3)
+    strncpy(mnth , "MAR\0", 3);
+	if(gDate.Month == 4)
+    strncpy(mnth , "APR\0", 3);
+	if(gDate.Month == 5)
+    strncpy(mnth , "MAY\0", 3);
+	if(gDate.Month == 6)
+    strncpy(mnth , "JUN\0", 3);
+	if(gDate.Month == 7)
+    strncpy(mnth , "JUL\0", 3);		
+	if(gDate.Month == 8)
+	  strncpy(mnth , "AUG\0", 3);		
+	if(gDate.Month == 9)
+	  strncpy(mnth , "SEP\0", 3);		
+	if(gDate.Month == 10)
+	  strncpy(mnth , "OCT\0", 3);		
+	if(gDate.Month == 11)
+	  strncpy(mnth , "NOV\0", 3);		
+	if(gDate.Month == 12)
+	  strncpy(mnth , "DEC\0", 3);		
+}
+void get_time_date(void)
+{
+  RTC_DateTypeDef gDate;
+  RTC_TimeTypeDef gTime;
+
+  /* Get the RTC current Time */
+  HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+  /* Get the RTC current Date */
+  HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+
+  /* Display time Format: hh:mm:ss */
+  sprintf((char*)time,"%02d:%02d",gTime.Hours, gTime.Minutes/*, gTime.Seconds*/);
+  get_rtc_hour =  gTime.Hours;
+	get_rtc_min = gTime.Minutes;
+	
+	weekday = gDate.WeekDay;
+	get_month_rtc();
+
+  /* Display date Format: mm-dd-yy */
+  sprintf((char*)date,"%02d%s,%2d",gDate.Date,mnth, 2000 + gDate.Year);  // I like the date first
+}
+void set_profile_timing(uint8_t t_on, uint8_t t_off)
+{
+	if(event1_timer_on_flag)
+	{
+		if(T1_Second > t_off && T1_Second < t_off + t_on)
+		{
+			rev_sec = t_off;
+			spr_count++;
+			spray_motor_on_flag = 1;
+		}
+		else
+		{ 
+			spray_motor_on_flag = 0;
+			rev_sec--;
+			if(rev_sec < 0)
+				rev_sec = 0;
+		}
+		if(T1_Second == t_off + t_on)
+			T1_Second = 0;
+  }
+	else
+	{
+		  T1_Second = 0;
+	}
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if(htim -> Instance == TIM1)      ///// 1 Second Timer   ////
+  {
+		second++;
+		spr_sec++;		
+    time_keep++;
+		weekday_sel++;
+		if(!setting_menu_flag || !time_gui_flag || !date_gui_flag || !event1_menu_flag)
+			display_on_count++;
+		if(event1_timer_on_flag)
+			T1_Second++;
+    else
+			T1_Second = 0;
+		if(spr_sec >= 10)
+			spr_on_flag = 1; 
+		else
+			spr_on_flag = 0;
+		set_profile_timing(evt1_spr_on_time, ev1_spr_off_time);
+	}
+	if(htim -> Instance == TIM3)     ///// 200 Milli Second Timer ////
+	{
+		Oled_Display_On_Off_Flag();
+		Navigation_key();
+		if(event_one_flag && up_flag)
+		{
+			if(day_counter == 2 && w_day < 7)
+				day_counter = day_counter;
+			else
+				day_counter++;
+			if(day_counter > 9)
+				day_counter = 1;
+		}
+		if(event_one_flag && down_flag)
+		{
+			if(day_counter == 2 && w_day < 7)
+				day_counter = day_counter;
+			else
+				day_counter--;
+			if(day_counter < 1)
+			  day_counter = 9;
+		}
+		t200++;
+		if(t200 > 2)
+		{
+		  weekday_sec++;
+			t200 = 0;
+		}
+		if(weekday_sec >= 1)
+		{
+			gui_blink_on_flag = 1;
+			gui_blink_off_flag = 0;
+			if(left_flag)
+			{ 
+				X5 = X5 + 30;
+				if(X5 > 85)
+					X5 = 55;
+				Y5 = Y5 + 0;
+			} 	
+		}
+		if(weekday_sec > 1 && weekday_sec <= 2)
+		{
+			gui_blink_off_flag = 1;
+			gui_blink_on_flag = 0;
+			weekday_sec = 0;
+		}
+		if(event1_on_timing_control_flag)
+		{
+		  Event1_Hr_Min_On_Control();
+		}
+		if(event1_off_timing_control_flag)
+		{
+		  Event1_Hr_Min_Off_Control();
+		}
+	}
+}
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  *
+  * @retval None
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration----------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+ 
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_TIM1_Init();
+  MX_TIM2_Init();
+  MX_RTC_Init();
+  MX_TIM3_Init();
+  MX_I2C1_Init();
+  MX_ADC1_Init();
+
+  /* Initialize interrupts */
+  MX_NVIC_Init();
+  /* USER CODE BEGIN 2 */
+ 
+	HAL_TIM_Base_Start_IT(&htim1);
+	HAL_TIM_Base_Start_IT(&htim3);
+	HAL_TIM_PWM_Start_IT(&htim2, TIM_CHANNEL_1);
+ 
+	ssd1306_Init();  
+	Oled_GUI_Graphics_Test();
+	HAL_Delay(100);
+	menu_on_flag = 1;
+	one_time_init_flag = 1;
+	spr_sec = 0;	
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+
+  /* USER CODE END WHILE */
+
+  /* USER CODE BEGIN 3 */
+		
+	/* back_up_value = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1); */
+	   Battery_Sense(); 
+		 get_time_date();
+		 Oled_GUI();
+		 Oled_Menu();	
+		 USER_RTC_Date_Time_Init();
+	   Sprinkle_Event1_Setup(); 
+	   Event1_Profile_Setting();
+	   Event1_Backup_Setting();
+     Check_Reset_Resume_Data();
+	   Fluid_Control(); 
+     Oled_Sleep_Control();
+  }
+  /* USER CODE END 3 */
+
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+
+  RCC_OscInitTypeDef RCC_OscInitStruct;
+  RCC_ClkInitTypeDef RCC_ClkInitStruct;
+  RCC_PeriphCLKInitTypeDef PeriphClkInit;
+
+    /**Initializes the CPU, AHB and APB busses clocks 
+    */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+    /**Initializes the CPU, AHB and APB busses clocks 
+    */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_ADC;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+    /**Configure the Systick interrupt time 
+    */
+  HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
+
+    /**Configure the Systick 
+    */
+  HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+
+  /* SysTick_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+}
+
+/**
+  * @brief NVIC Configuration.
+  * @retval None
+  */
+static void MX_NVIC_Init(void)
+{
+  /* TIM1_BRK_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(TIM1_BRK_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(TIM1_BRK_IRQn);
+  /* TIM1_UP_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(TIM1_UP_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
+  /* TIM2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(TIM2_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(TIM2_IRQn);
+  /* TIM3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(TIM3_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(TIM3_IRQn);
+}
+
+/* USER CODE BEGIN 4 */
+static void MX_RTC_Init(void)
+{
+
+  RTC_TimeTypeDef sTime;
+  RTC_DateTypeDef DateToUpdate;
+
+    /**Initialize RTC Only 
+    */
+  hrtc.Instance = RTC;
+  hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
+  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+    /**Initialize RTC and set the Time and Date 
+    */
+  if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0x32F2)
+	{
+		sTime.Hours = 1;
+		sTime.Minutes = 0;
+		sTime.Seconds = 0;
+
+		if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK)
+		{
+			_Error_Handler(__FILE__, __LINE__);
+		}
+
+		DateToUpdate.WeekDay = RTC_WEEKDAY_MONDAY;
+		DateToUpdate.Month = RTC_MONTH_JANUARY;
+		DateToUpdate.Date = 1;
+		DateToUpdate.Year = 0;
+
+		if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BIN) != HAL_OK)
+		{
+			_Error_Handler(__FILE__, __LINE__);
+		}
+
+			HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR1,0x32F2);
+  }
+  else
+  {
+      hrtc.DateToUpdate.Year = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR2);
+      hrtc.DateToUpdate.Month = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR3);
+      hrtc.DateToUpdate.Date = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR4);
+      HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+  }
+}
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @param  file: The file name as string.
+  * @param  line: The line in file as a number.
+  * @retval None
+  */
+void _Error_Handler(char *file, int line)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  while(1)
+  {
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t* file, uint32_t line)
+{ 
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/**
+  * @}
+  */
+
+/**
+  * @}
+  */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
